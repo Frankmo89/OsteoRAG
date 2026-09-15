@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Env / secrets
+.env
+.env.local
+.dev.vars
+*.pem
+
+# Build / cache
+dist/
+.wrangler/
+.turbo/
+*.tsbuildinfo
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Corpus PDFs (large / private) — keep folders + MANIFEST
+corpus/**/*.pdf
+corpus/**/*.PDF
+corpus/**/*.pptx
+corpus/**/*.PPTX
+!corpus/MANIFEST.md
+
+# Logs / temp
+*.log
+tmp/
+.temp/

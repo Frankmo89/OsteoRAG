@@ -1,0 +1,26 @@
+name = "osteorag"
+main = "src/index.ts"
+compatibility_date = "2025-03-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Static assets (UI) served alongside the Worker
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+# Secrets / vars — set via `wrangler secret put` or .dev.vars locally
+# Required: SUPABASE_URL, SUPABASE_ANON_KEY (or SERVICE_ROLE for server),
+#           OPENAI_API_KEY
+# Optional: OPENAI_BASE_URL, EMBEDDING_MODEL, CHAT_MODEL, EMBEDDING_DIM
+
+[vars]
+EMBEDDING_MODEL = "text-embedding-3-small"
+CHAT_MODEL = "gpt-4o-mini"
+# EMBEDDING_DIM = "1536"  # must match migration vector(N)
+
+# Example local secrets file: .dev.vars (gitignored)
+# SUPABASE_URL=https://xxxx.supabase.co
+# SUPABASE_SERVICE_ROLE_KEY=eyJ...
+# OPENAI_API_KEY=sk-...
+# OPENAI_BASE_URL=https://api.openai.com/v1

@@ -1,0 +1,29 @@
+{
+  "name": "osteorag",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OsteoRAG — asistente privado de estudio/clínica para osteopatía (RAG, no diagnóstico)",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "ingest": "tsx scripts/ingest.ts",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.49.8",
+    "hono": "4.7.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "4.20250317.0",
+    "@types/node": "22.13.10",
+    "dotenv": "16.4.7",
+    "pdf-parse": "1.1.1",
+    "tsx": "4.19.3",
+    "typescript": "5.8.2",
+    "wrangler": "3.114.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

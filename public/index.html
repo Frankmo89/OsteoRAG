@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="description" content="OsteoRAG — asistente de estudio para osteopatía. No diagnóstico." />
+  <title>OsteoRAG</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">🦴</span>
+        <div>
+          <h1>OsteoRAG</h1>
+          <p class="tag">Asistente de estudio / clínica · no diagnóstico</p>
+        </div>
+      </div>
+      <label class="filter">
+        <span>Carpeta</span>
+        <select id="folderFilter" aria-label="Filtro de carpeta">
+          <option value="all">Todas</option>
+          <option value="escuela">Escuela</option>
+          <option value="libros">Libros</option>
+          <option value="tesis">Tesis</option>
+        </select>
+      </label>
+    </header>
+
+    <aside class="disclaimer" role="note">
+      <strong>Aviso:</strong> OsteoRAG recupera y resume material de tu corpus privado.
+      <em>No diagnostica, no prescribe tratamientos y no sustituye el criterio profesional.</em>
+      Usa siempre las citas y el material original.
+    </aside>
+
+    <main id="chat" class="chat" aria-live="polite"></main>
+
+    <form id="form" class="composer" autocomplete="off">
+      <textarea
+        id="message"
+        rows="2"
+        maxlength="4000"
+        placeholder="Pregunta sobre anatomía, técnicas o apuntes…"
+        required
+      ></textarea>
+      <button type="submit" id="send" aria-label="Enviar">Enviar</button>
+    </form>
+  </div>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
