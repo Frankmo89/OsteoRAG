@@ -43,4 +43,7 @@ export interface Env {
   TOP_K?: string;
   /** Umbral mínimo de similitud coseno (0–1). Por defecto 0.32 */
   MIN_SIMILARITY?: string;
+  /** Si ambos existen, protege UI+API con HTTP Basic */
+  BASIC_AUTH_USER?: string;
+  BASIC_AUTH_PASS?: string;
 }

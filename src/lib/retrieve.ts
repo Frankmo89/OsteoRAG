@@ -166,7 +166,18 @@ function diversifyAndBoost(
     ),
   );
   // Preferencia fuerte a títulos de apunte relevantes
-  const titlePrefer = ['06 cervicales', 'cervicales', 'secuencia tcs', 'craneosacral'];
+  const qJoined = stripAccents(queries.join(' ').toLowerCase());
+  const wantsLinf =
+    /linfedema|drenaje linf|k-taping.*linf|linfatico|linfático/.test(qJoined);
+  const titlePrefer = [
+    '06 cervicales',
+    'cervicales',
+    'secuencia tcs',
+    'craneosacral',
+    'k taping en el drenaje linfatico',
+    'drenaje linfatico',
+    'linfedema',
+  ];
 
   const scored = chunks.map((c) => {
     let score = c.similarity ?? 0;
@@ -182,6 +193,13 @@ function diversifyAndBoost(
     if (titlePrefer.some((p) => nt.includes(p))) score += 0.08;
     if (/contraindic|klein|jackson|neurovegetativ|arteria vertebral/.test(hay)) {
       score += 0.06;
+    }
+    // Prioriza el PDF OCR de linfático / tesis cuando la pregunta es de linfedema
+    if (wantsLinf && /linf|drenaje linf/.test(nt + ' ' + hay.slice(0, 400))) {
+      score += 0.12;
+    }
+    if (wantsLinf && /k taping en el drenaje linfatico/.test(nt)) {
+      score += 0.1;
     }
     return { c, score };
   });

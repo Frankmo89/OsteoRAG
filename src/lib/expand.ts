@@ -184,13 +184,13 @@ const TOPIC_QUERIES: Array<{ test: RegExp; queries: string[] }> = [
     ],
   },
   {
-    test: /linfedema|drenaje\s*linf/i,
+    test: /linfedema|drenaje\s*linf|k-?taping.*linf/i,
     queries: [
-      'linfedema kinesiotape drenaje linfático manual',
-      'k-taping drenaje linfático',
-      'vendaje neuromuscular linfedema',
-      'kinesiology taping teoría y práctica linfedema',
-      'rehabilitación fisioterapéutica del linfedema',
+      'k-taping en el drenaje linfatico',
+      'linfedema kinesiotape drenaje linfático',
+      'indicaciones kinesiotape linfedema edema',
+      'rehabilitación fisioterapéutica del linfedema kinesiotape',
+      'vendaje neuromuscular drenaje linfático',
     ],
   },
 ];

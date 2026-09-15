@@ -2,11 +2,27 @@
  * OsteoRAG Worker — API Hono + assets estáticos.
  */
 import { Hono } from 'hono';
+import { basicAuth } from 'hono/basic-auth';
 import { cors } from 'hono/cors';
 import { handleChat } from './api/chat';
 import type { Env } from './lib/types';
 
 const app = new Hono<{ Bindings: Env }>();
+
+/** Auth HTTP Basic si BASIC_AUTH_USER + BASIC_AUTH_PASS están definidos. */
+app.use('*', async (c, next) => {
+  const user = c.env.BASIC_AUTH_USER;
+  const pass = c.env.BASIC_AUTH_PASS;
+  if (!user || !pass) {
+    return next();
+  }
+  // Health / preflight sin auth
+  if (c.req.path === '/api/health' || c.req.method === 'OPTIONS') {
+    return next();
+  }
+  const auth = basicAuth({ username: user, password: pass });
+  return auth(c, next);
+});
 
 app.use('/api/*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'OPTIONS'] }));
 

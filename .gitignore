@@ -40,3 +40,7 @@ corpus/**/*.webp
 corpus/**/*.JPG
 corpus/**/*.JPEG
 corpus/**/*.PNG
+
+.tmp_basic_user
+.tmp_basic_pass
+
