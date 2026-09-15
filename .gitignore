@@ -31,3 +31,12 @@ corpus/**/*.PPTX
 *.log
 tmp/
 .temp/
+
+# Corpus images (not for GitHub)
+corpus/**/*.jpg
+corpus/**/*.jpeg
+corpus/**/*.png
+corpus/**/*.webp
+corpus/**/*.JPG
+corpus/**/*.JPEG
+corpus/**/*.PNG

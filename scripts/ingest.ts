@@ -206,15 +206,28 @@ async function embedBatch(texts: string[], apiKey: string): Promise<number[][]> 
 
 async function listPdfs(folder: SourceFolder): Promise<string[]> {
   const dir = path.join(CORPUS_DIR, folder);
-  try {
-    const entries = await readdir(dir);
-    return entries
-      .filter((f) => f.toLowerCase().endsWith('.pdf'))
-      .map((f) => path.join(dir, f))
-      .sort();
-  } catch {
-    return [];
+  const out: string[] = [];
+
+  async function walk(current: string): Promise<void> {
+    let entries: string[];
+    try {
+      entries = await readdir(current);
+    } catch {
+      return;
+    }
+    for (const name of entries) {
+      const full = path.join(current, name);
+      const s = await stat(full);
+      if (s.isDirectory()) {
+        await walk(full);
+      } else if (s.isFile() && name.toLowerCase().endsWith('.pdf')) {
+        out.push(full);
+      }
+    }
   }
+
+  await walk(dir);
+  return out.sort();
 }
 
 function titleFromPath(filePath: string): string {
