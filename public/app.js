@@ -7,6 +7,7 @@ const messageEl = document.getElementById('message');
 const sendBtn = document.getElementById('send');
 const folderFilter = document.getElementById('folderFilter');
 const folderChips = document.querySelectorAll('.fchip');
+const folderTip = document.getElementById('folderTip');
 const suggestChips = document.getElementById('suggestChips');
 const newChatBtn = document.getElementById('newChat');
 
@@ -39,10 +40,21 @@ const SUGGESTIONS = {
   ],
 };
 
-const WELCOME =
-  'Haz una pregunta sobre tu corpus (escuela, libros, tesis). Las respuestas incluyen citas cuando hay coincidencias.';
-const WELCOME_LIBROS =
-  'En Libros: kinesiotape, VNM, anatomía. La evidencia de linfedema suele estar en Tesis — cambia el filtro si buscas eso.';
+const FOLDER_TIPS = {
+  all: 'Corpus completo: escuela, libros y tesis.',
+  escuela: 'Apuntes y técnicas de clase (p. ej. cervicales 06_CERVICALES).',
+  libros: 'Manuales de KT/VNM y anatomía (OCR de kinesiotaping).',
+  tesis: 'Evidencia clínica y linfedema — mejor aquí que en Libros.',
+};
+
+const WELCOME_BY_FOLDER = {
+  all: 'Haz una pregunta sobre tu corpus (escuela, libros, tesis). Las respuestas incluyen citas cuando hay coincidencias. Material de estudio — no diagnóstico.',
+  escuela: 'Escuela: apuntes y técnicas de osteopatía (cervicales, pelvis, visceral…). Estudio — no diagnóstico.',
+  libros: 'Libros: kinesiotape, VNM y anatomía. Si buscas evidencia de linfedema, cambia a Tesis. Estudio — no diagnóstico.',
+  tesis: 'Tesis: evidencia clínica (p. ej. linfedema y kinesiotape). Estudio — no diagnóstico.',
+};
+
+const WELCOME = WELCOME_BY_FOLDER.all;
 
 /** @type {{ role: string, text: string, citations?: any[] }[]} */
 let history = [];
@@ -145,7 +157,8 @@ function appendMessageEl(role, text, { citations, loading } = {}) {
 function renderAll() {
   chat.innerHTML = '';
   if (!history.length) {
-    appendMessageEl('system', WELCOME);
+    const folder = folderFilter?.value || 'all';
+    appendMessageEl('system', WELCOME_BY_FOLDER[folder] || WELCOME);
     return;
   }
   for (const m of history) {
@@ -170,15 +183,13 @@ function setFolder(value) {
     btn.classList.toggle('active', on);
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
+  if (folderTip) {
+    folderTip.textContent = FOLDER_TIPS[v] || FOLDER_TIPS.all;
+  }
   renderSuggestions();
-  // Tip suave: linfedema evidencia → Tesis cuando el filtro es Libros
-  if (v === 'libros' && history.length === 0) {
-    const tip = WELCOME_LIBROS;
+  if (history.length === 0) {
     const last = chat.querySelector('.msg.system');
-    if (last) last.textContent = tip;
-  } else if (history.length === 0) {
-    const last = chat.querySelector('.msg.system');
-    if (last) last.textContent = WELCOME;
+    if (last) last.textContent = WELCOME_BY_FOLDER[v] || WELCOME;
   }
 }
 
@@ -205,6 +216,7 @@ function clearChat() {
   history = [];
   saveHistory();
   renderAll();
+  setFolder(folderFilter.value || 'all');
   messageEl.value = '';
   updateSendState();
   messageEl.focus();
