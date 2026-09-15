@@ -13,7 +13,7 @@ const newChatBtn = document.getElementById('newChat');
 const SUGGESTIONS = {
   all: [
     '¿Qué técnicas cervicales se usan en osteopatía?',
-    'Resumen de kinesiotape para linfedema',
+    '¿Qué evidencia hay de kinesiotape en linfedema?',
     'Anatomía de los músculos del suelo pélvico',
     'Principios del abordaje craneosacral',
     'Indicaciones del taping según Kumbrink',
@@ -26,10 +26,11 @@ const SUGGESTIONS = {
     'Disfunción somática cervical C1–C2',
   ],
   libros: [
+    'Contraindicaciones del VNM / vendaje neuromuscular',
     'Aplicación de kinesiotape en cuello',
     'Taping estilo Kumbrink para hombro',
-    'Anatomía de músculos paravertebrales',
     'Indicaciones y cortes del kinesiotape',
+    'Anatomía de músculos paravertebrales',
   ],
   tesis: [
     'Kinesiotape y linfedema: hallazgos de tesis',
@@ -40,9 +41,12 @@ const SUGGESTIONS = {
 
 const WELCOME =
   'Haz una pregunta sobre tu corpus (escuela, libros, tesis). Las respuestas incluyen citas cuando hay coincidencias.';
+const WELCOME_LIBROS =
+  'En Libros: kinesiotape, VNM, anatomía. La evidencia de linfedema suele estar en Tesis — cambia el filtro si buscas eso.';
 
 /** @type {{ role: string, text: string, citations?: any[] }[]} */
 let history = [];
+let isLoading = false;
 
 function escapeHtml(s) {
   return String(s)
@@ -56,6 +60,11 @@ function escapeHtml(s) {
 function renderMarkdown(text) {
   const escaped = escapeHtml(text);
   return escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+}
+
+function updateSendState() {
+  const empty = !messageEl.value.trim();
+  sendBtn.disabled = empty || isLoading;
 }
 
 function loadHistory() {
@@ -117,7 +126,7 @@ function appendMessageEl(role, text, { citations, loading } = {}) {
   if (loading) {
     el.classList.add('loading');
     el.innerHTML =
-      '<span class="typing"><span class="dots" aria-hidden="true"><span></span><span></span><span></span></span> Buscando…</span>';
+      '<span class="typing"><span class="dots" aria-hidden="true"><span></span><span></span><span></span></span> Buscando en el corpus…</span>';
   } else if (role === 'bot') {
     const body = document.createElement('div');
     body.className = 'body';
@@ -162,6 +171,15 @@ function setFolder(value) {
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
   renderSuggestions();
+  // Tip suave: linfedema evidencia → Tesis cuando el filtro es Libros
+  if (v === 'libros' && history.length === 0) {
+    const tip = WELCOME_LIBROS;
+    const last = chat.querySelector('.msg.system');
+    if (last) last.textContent = tip;
+  } else if (history.length === 0) {
+    const last = chat.querySelector('.msg.system');
+    if (last) last.textContent = WELCOME;
+  }
 }
 
 function renderSuggestions() {
@@ -176,6 +194,7 @@ function renderSuggestions() {
     btn.addEventListener('click', () => {
       messageEl.value = q;
       messageEl.focus();
+      updateSendState();
       form.requestSubmit();
     });
     suggestChips.appendChild(btn);
@@ -187,6 +206,7 @@ function clearChat() {
   saveHistory();
   renderAll();
   messageEl.value = '';
+  updateSendState();
   messageEl.focus();
 }
 
@@ -201,14 +221,16 @@ newChatBtn.addEventListener('click', clearChat);
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const message = messageEl.value.trim();
-  if (!message) return;
+  if (!message || isLoading) return;
 
   history.push({ role: 'user', text: message });
   if (history.length > MAX_MESSAGES) history = history.slice(-MAX_MESSAGES);
   saveHistory();
   appendMessageEl('user', message);
   messageEl.value = '';
-  sendBtn.disabled = true;
+  messageEl.style.height = 'auto';
+  isLoading = true;
+  updateSendState();
 
   const pending = appendMessageEl('bot', '', { loading: true });
 
@@ -256,7 +278,8 @@ form.addEventListener('submit', async (e) => {
     history.push({ role: 'error', text: errText });
     saveHistory();
   } finally {
-    sendBtn.disabled = false;
+    isLoading = false;
+    updateSendState();
     messageEl.focus();
     chat.scrollTop = chat.scrollHeight;
   }
@@ -265,15 +288,17 @@ form.addEventListener('submit', async (e) => {
 messageEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
-    form.requestSubmit();
+    if (!sendBtn.disabled) form.requestSubmit();
   }
 });
 
 messageEl.addEventListener('input', () => {
   messageEl.style.height = 'auto';
-  messageEl.style.height = `${Math.min(messageEl.scrollHeight, 140)}px`;
+  messageEl.style.height = `${Math.min(messageEl.scrollHeight, 120)}px`;
+  updateSendState();
 });
 
 history = loadHistory();
 setFolder(folderFilter.value || 'all');
 renderAll();
+updateSendState();

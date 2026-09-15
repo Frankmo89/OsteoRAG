@@ -27,9 +27,16 @@
     </header>
 
     <aside class="disclaimer" role="note">
-      <strong>Aviso:</strong> OsteoRAG recupera y resume material de tu corpus privado.
-      <em>No diagnostica, no prescribe tratamientos y no sustituye el criterio profesional.</em>
-      Usa siempre las citas y el material original.
+      <details>
+        <summary>
+          <span class="disclaimer-summary">Aviso: no diagnostica · verifica con el material original</span>
+        </summary>
+        <p class="disclaimer-body">
+          OsteoRAG recupera y resume material de tu corpus privado.
+          <em>No diagnostica, no prescribe tratamientos y no sustituye el criterio profesional.</em>
+          Usa siempre las citas y el material original.
+        </p>
+      </details>
     </aside>
 
     <section class="filters" aria-label="Filtro de carpeta">
@@ -55,17 +62,26 @@
 
     <main id="chat" class="chat" aria-live="polite"></main>
 
-    <form id="form" class="composer" autocomplete="off">
-      <textarea
-        id="message"
-        rows="2"
-        maxlength="4000"
-        placeholder="Pregunta sobre anatomía, técnicas o apuntes…"
-        required
-        enterkeyhint="send"
-      ></textarea>
-      <button type="submit" id="send" aria-label="Enviar">Enviar</button>
-    </form>
+    <div class="composer-wrap">
+      <form id="form" class="composer" autocomplete="off">
+        <textarea
+          id="message"
+          rows="1"
+          maxlength="4000"
+          placeholder="Pregunta sobre anatomía, técnicas o apuntes…"
+          required
+          enterkeyhint="send"
+        ></textarea>
+        <button type="submit" id="send" class="send-btn" aria-label="Enviar" disabled>
+          <svg class="send-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M12 4l-7 7h4.5v9h5v-9H19z"/>
+          </svg>
+        </button>
+      </form>
+      <p class="composer-disclaimer" role="note">
+        Verifica siempre con el material original · no diagnóstico
+      </p>
+    </div>
   </div>
   <script src="/app.js" type="module"></script>
 </body>

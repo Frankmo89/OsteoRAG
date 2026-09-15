@@ -41,6 +41,6 @@ export interface Env {
   CHAT_MODEL: string;
   EMBEDDING_DIM?: string;
   TOP_K?: string;
-  /** Umbral mínimo de similitud coseno (0–1). Por defecto 0.35 */
+  /** Umbral mínimo de similitud coseno (0–1). Por defecto 0.32 */
   MIN_SIMILARITY?: string;
 }

@@ -1,5 +1,5 @@
 /**
- * POST /api/chat — retrieve → generate.
+ * POST /api/chat — retrieve (multi-query) → generate.
  */
 import type { Context } from 'hono';
 import { generateAnswer } from '../lib/generate';
@@ -18,6 +18,30 @@ const VALID_FILTERS = new Set<FolderFilter>([
   'tesis',
   'all',
 ]);
+
+/** Tips estáticos ES según filtro activo (cuando retrieve queda vacío). */
+function reformulationHints(folderFilter: FolderFilter): string {
+  const common = [
+    'Prueba términos más clínicos (p. ej. «lumbalgia», «vendaje neuromuscular / VNM», «TCS / craneosacral»).',
+    'Incluye la estructura o técnica concreta (p. ej. «músculos flexores de la rodilla», «secuencia TCS»).',
+  ];
+  const byFolder: Record<FolderFilter, string[]> = {
+    escuela: [
+      'Con filtro escuela, nombra el tema del apunte (cervicales, rodilla, visceral, Secuencia_TCS).',
+    ],
+    libros: [
+      'Con filtro libros, usa vocabulario de manuales (kinesiotaping, VNM, contraindicaciones). Para linfedema / evidencia de kinesiotape, prueba el filtro Tesis.',
+    ],
+    tesis: [
+      'Con filtro tesis, menciona el tema del trabajo (p. ej. linfedema y kinesiotape).',
+    ],
+    all: [
+      'Si el tema es de un apunte concreto, prueba el filtro escuela / libros / tesis.',
+    ],
+  };
+  const tips = [...common.slice(0, 2), ...byFolder[folderFilter]].slice(0, 3);
+  return `\n\nSugerencias para reformular:\n- ${tips.join('\n- ')}`;
+}
 
 export async function handleChat(c: Context<{ Bindings: Env }>) {
   let body: ChatRequestBody;
@@ -54,16 +78,16 @@ export async function handleChat(c: Context<{ Bindings: Env }>) {
 
   try {
     const raw = await retrieveChunks(env, message, folderFilter);
-    // Default ~0.35 — filter weak matches before generate (no weak citation chips).
-    const minSim = parseFloat(env.MIN_SIMILARITY || '0.35');
+    // Compromiso 0.32 tras merge multi-query (antes 0.35).
+    const minSim = parseFloat(env.MIN_SIMILARITY || '0.32');
     const chunks = filterByMinSimilarity(
       raw,
-      Number.isFinite(minSim) ? minSim : 0.35,
+      Number.isFinite(minSim) ? minSim : 0.32,
     );
 
     if (chunks.length === 0) {
       const payload: ChatResponseBody = {
-        answer: NOT_FOUND_ANSWER,
+        answer: NOT_FOUND_ANSWER + reformulationHints(folderFilter),
         citations: [],
       };
       return c.json(payload);

@@ -16,11 +16,12 @@ OsteoRAG/
 ├── scripts/ingest.ts       # Extract → chunk → embed → upsert
 ├── src/
 │   ├── api/chat.ts         # POST /api/chat
-│   ├── lib/                # openai · retrieve · generate · types
+│   ├── lib/                # openai · expand · retrieve · generate · types
 │   ├── prompts/system.ts
 │   └── index.ts            # Worker Hono
 ├── supabase/migrations/
-│   └── 001_init.sql
+│   ├── 001_init.sql
+│   └── 002_keyword_search.sql   # hybrid keyword RPC
 ├── wrangler.toml
 ├── .env.example
 └── package.json
@@ -37,7 +38,9 @@ Límites claros: **ingest** (script) · **retrieve** (`src/lib/retrieve.ts`) · 
 ## 1. Supabase
 
 1. Crea un proyecto.
-2. SQL Editor → ejecuta `supabase/migrations/001_init.sql`  
+2. SQL Editor → ejecuta en orden:
+   - `supabase/migrations/001_init.sql` (esquema + `match_chunks`)
+   - `supabase/migrations/002_keyword_search.sql` (FTS + `keyword_chunks` para hybrid retrieve)  
    (o CLI: `supabase db push` si usas el CLI vinculado).
 3. Copia **Project URL**, **anon key** y **service_role key** (Settings → API).  
    El **service_role** solo para el Worker y `npm run ingest` (nunca en el navegador).
@@ -70,6 +73,10 @@ Variables clave:
 | `OPENAI_BASE_URL` | Opcional (proxy / compatible) |
 | `EMBEDDING_MODEL` | p.ej. `text-embedding-3-small` |
 | `CHAT_MODEL` | p.ej. `gpt-4o-mini` |
+| `OCR_MODE` | `auto` (default) · `tesseract` · `openai` · `off` |
+| `OCR_MAX_PAGES` | Máx. páginas OCR por PDF (default 40) |
+| `OCR_CHAT_MODEL` | Modelo visión OCR (default = `CHAT_MODEL`) |
+| `MIN_SIMILARITY` | Umbral coseno post-merge (default 0.32) |
 
 ## 3. Corpus PDF
 
@@ -85,7 +92,38 @@ npm install
 npm run ingest
 ```
 
-El script: lee PDFs → texto con nº de página → chunks ~1000 / overlap 200 → embeddings → upsert en `documents` + `chunks`.
+El script: lee PDFs → texto con nº de página → chunks ~1200 / overlap 250 → embeddings → upsert en `documents` + `chunks`.
+
+### OCR de PDFs escaneados
+
+Si `pdf-parse` no extrae texto (o casi nada) pero el PDF tiene páginas, el ingest activa **OCR fallback**:
+
+1. **Preferido (gratis/local):** `tesseract` + `pdftoppm` (paquetes `tesseract-ocr`, `tesseract-ocr-spa`, `poppler-utils`).
+2. **Alternativa de pago:** `OCR_MODE=openai` — rasteriza con `pdftoppm` y envía hasta `OCR_MAX_PAGES` (default 40) a **gpt-4o-mini** (visión).  
+   **⚠ Coste:** cada página es una llamada de visión; úsalo solo para los escaneados que fallaron (p. ej. con `--file`), no para todo el corpus.
+
+```bash
+# Ejemplo: re-ingerir un KT escaneado con OCR OpenAI
+OCR_MODE=openai OCR_MAX_PAGES=40 npx tsx scripts/ingest.ts --file "corpus/libros/KT Adultos/k-taping en el drenaje linfatico.pdf"
+```
+
+`--file` acepta paths Windows, acentos (NFC/NFD) y rutas relativas bajo `corpus/`.
+
+### Re-ingerir un solo archivo
+
+Si un PDF no aparece en retrieve (p. ej. `Secuencia_TCS.pdf`), vuelve a indexarlo sin rehacer todo el corpus:
+
+```bash
+# Opción A — wrapper
+chmod +x scripts/reingest-one.sh
+./scripts/reingest-one.sh corpus/escuela/Secuencia_TCS.pdf
+
+# Opción B — flag / env
+npx tsx scripts/ingest.ts --file corpus/escuela/Secuencia_TCS.pdf
+INGEST_ONLY=escuela/Secuencia_TCS.pdf npm run ingest
+```
+
+Requiere `.env` con `SUPABASE_*` y `OPENAI_*`. Idempotente por `storage_path` (borra chunks previos del documento).
 
 ## 4. Desarrollo local (Worker + UI)
 
@@ -140,12 +178,17 @@ Respuesta:
 
 Sin hits útiles → mensaje de no encontrado en español (sin inventar).
 
+### Recuperación hybrid
+
+`src/lib/retrieve.ts` hace: expand query → multi-embed `match_chunks` → merge por id → **pase keyword** (`keyword_chunks` o `ilike` cliente) sobre tokens clínicos (≥4 chars) → top-K.  
+Los hits keyword reciben similitud ~0.34–0.40 (piso 0.36) para superar `MIN_SIMILARITY` sin ahogar resultados vectoriales. Requiere migración `002_keyword_search.sql`.
+
 ## Fase 2 (notas)
 
 - Fotos / multimodal (más adelante).
 - Auth de usuarios reales + políticas RLS por `user_id`.
 - Sync Drive (`drive_file_id` ya existe en `documents`).
-- Reindexado incremental y mejor OCR para escaneados.
+- Reindexado incremental.
 
 ## Licencia / privacidad
 

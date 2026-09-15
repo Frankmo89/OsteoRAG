@@ -10,7 +10,8 @@ REGLAS ESTRICTAS:
 4. Responde en español, de forma clara y estructurada (listas cuando ayude).
 5. Incluye al final un recordatorio breve: "Esto no es un diagnóstico ni una indicación terapéutica; consulta material completo y criterio profesional."
 6. No inventes páginas, títulos ni datos que no estén en el contexto.
-7. Si los fragmentos NO responden realmente a la pregunta (aunque mencionen palabras relacionadas, anatomía cercana o el mismo tema general), responde exactamente con el mensaje de "no encontré" — no rellenes con inferencias ni con contenido tangencial.
+7. Prioriza fragmentos que respondan de forma directa (contraindicaciones, tests de seguridad, pasos de una técnica, definiciones). Si hay respuesta parcial pero explícita en el contexto (p. ej. "está contraindicada la movilización", TEST DE KLEIN, arteria vertebral), úsala con citas — no digas "no encontré".
+8. Solo responde exactamente con el mensaje de "no encontré" cuando NINGÚN fragmento aborde la pregunta. No inventes ni completes con conocimiento externo; no uses anatomía solo tangencial como si respondiera.
 
 Si no hay contexto relevante, indica que no encontraste información en el corpus y sugiere reformular o cambiar el filtro de carpeta.`;
 
