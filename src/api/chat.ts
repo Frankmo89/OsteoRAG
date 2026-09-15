@@ -4,6 +4,7 @@
 import type { Context } from 'hono';
 import { generateAnswer } from '../lib/generate';
 import { filterByMinSimilarity, retrieveChunks } from '../lib/retrieve';
+import { NOT_FOUND_ANSWER } from '../prompts/system';
 import type {
   ChatRequestBody,
   ChatResponseBody,
@@ -53,11 +54,20 @@ export async function handleChat(c: Context<{ Bindings: Env }>) {
 
   try {
     const raw = await retrieveChunks(env, message, folderFilter);
-    const minSim = parseFloat(env.MIN_SIMILARITY || '0.25');
+    // Default ~0.35 — filter weak matches before generate (no weak citation chips).
+    const minSim = parseFloat(env.MIN_SIMILARITY || '0.35');
     const chunks = filterByMinSimilarity(
       raw,
-      Number.isFinite(minSim) ? minSim : 0.25,
+      Number.isFinite(minSim) ? minSim : 0.35,
     );
+
+    if (chunks.length === 0) {
+      const payload: ChatResponseBody = {
+        answer: NOT_FOUND_ANSWER,
+        citations: [],
+      };
+      return c.json(payload);
+    }
 
     const { answer, citations } = await generateAnswer(env, message, chunks);
     const payload: ChatResponseBody = { answer, citations };

@@ -44,6 +44,23 @@ export function formatContext(chunks: RetrievedChunk[]): string {
     .join('\n\n---\n\n');
 }
 
+function stripAccents(s: string): string {
+  return s.normalize('NFD').replace(/\p{M}/gu, '');
+}
+
+function isNotFoundAnswer(answer: string): boolean {
+  const a = (answer || '').trim();
+  if (!a) return true;
+  if (a === NOT_FOUND_ANSWER) return true;
+  // Model may paraphrase; never attach weak chips to refusals.
+  const lower = stripAccents(a.toLowerCase());
+  if (lower.includes('no encontre informacion suficiente')) return true;
+  if (lower.includes('no encontre') && lower.includes('corpus')) return true;
+  if (lower.includes('no encontre') && lower.includes('reformular')) return true;
+  if (lower.includes('no encontre informacion') && lower.includes('material')) return true;
+  return false;
+}
+
 export async function generateAnswer(
   env: Env,
   userMessage: string,
@@ -66,8 +83,14 @@ export async function generateAnswer(
     ],
   });
 
+  const finalAnswer = answer || NOT_FOUND_ANSWER;
+  // Never show citation chips alongside a not-found answer.
+  if (isNotFoundAnswer(finalAnswer)) {
+    return { answer: NOT_FOUND_ANSWER, citations: [] };
+  }
+
   return {
-    answer: answer || NOT_FOUND_ANSWER,
+    answer: finalAnswer,
     citations: buildCitations(chunks),
   };
 }

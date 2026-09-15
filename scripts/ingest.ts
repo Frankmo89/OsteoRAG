@@ -41,8 +41,8 @@ dotenv.config({ path: path.resolve(process.cwd(), '.dev.vars') });
 const FOLDERS = ['escuela', 'libros', 'tesis'] as const;
 type SourceFolder = (typeof FOLDERS)[number];
 
-const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE || '1000', 10);
-const CHUNK_OVERLAP = parseInt(process.env.CHUNK_OVERLAP || '200', 10);
+const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE || '1200', 10);
+const CHUNK_OVERLAP = parseInt(process.env.CHUNK_OVERLAP || '250', 10);
 const EMBEDDING_MODEL =
   process.env.EMBEDDING_MODEL || 'text-embedding-3-small';
 const OPENAI_BASE = (
@@ -64,6 +64,54 @@ interface PageText {
   text: string;
 }
 
+
+
+/** Quita null bytes y controles que rompen JSON/Postgres (\\u0000). */
+function sanitizeForPostgres(s: string): string {
+  return s
+    .replace(/\u0000/g, '')
+    .replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F]/g, ' ')
+    .replace(/\\u0000/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Colapsa OCR con letras espaciadas: "T E R A P I A" → "TERAPIA". */
+function collapseLetterSpacedOCR(text: string): string {
+  const tokens = text.split(/\s+/).filter(Boolean);
+  if (tokens.length < 4) return text;
+
+  const letter1 = /^[A-Za-zÁÉÍÓÚáéíóúÑñ]$/;
+  const singleLetterCount = tokens.filter((t) => letter1.test(t)).length;
+  if (singleLetterCount / tokens.length <= 0.4) {
+    // Heurística ligera por secuencias: ≥4 letras sueltas consecutivas
+    return text.replace(
+      /(?:^|\s)([A-Za-zÁÉÍÓÚáéíóúÑñ](?:\s+[A-Za-zÁÉÍÓÚáéíóúÑñ]){3,})(?=\s|$)/g,
+      (m) => ' ' + m.replace(/\s+/g, '').trim(),
+    ).replace(/\s+/g, ' ').trim();
+  }
+
+  // >40% tokens son letras sueltas → unir runs consecutivos de letras de longitud 1
+  const out: string[] = [];
+  let run: string[] = [];
+  const flush = () => {
+    if (run.length === 0) return;
+    if (run.length >= 2) out.push(run.join(''));
+    else out.push(run[0]!);
+    run = [];
+  };
+  for (const t of tokens) {
+    if (letter1.test(t)) {
+      run.push(t);
+    } else {
+      flush();
+      out.push(t);
+    }
+  }
+  flush();
+  return out.join(' ');
+}
+
 /** Extrae texto por página con pdf-parse pagerender. */
 async function extractPages(buf: Buffer): Promise<{ pages: PageText[]; pageCount: number }> {
   const pages: PageText[] = [];
@@ -75,7 +123,8 @@ async function extractPages(buf: Buffer): Promise<{ pages: PageText[]; pageCount
       const content = await pageData.getTextContent({
         normalizeWhitespace: true,
       });
-      const text = content.items.map((i) => i.str).join(' ').replace(/\s+/g, ' ').trim();
+      const joined = content.items.map((i) => i.str).join(' ').replace(/\s+/g, ' ').trim();
+      const text = sanitizeForPostgres(collapseLetterSpacedOCR(joined));
       const pageNum = (pageData.pageIndex != null ? pageData.pageIndex + 1 : pageCounter);
       pages.push({ page: pageNum, text });
       return text;
@@ -84,7 +133,7 @@ async function extractPages(buf: Buffer): Promise<{ pages: PageText[]; pageCount
 
   // Si pagerender no pobló (algunas versiones), fallback a texto monolítico
   if (pages.length === 0 && data.text?.trim()) {
-    pages.push({ page: 1, text: data.text.replace(/\s+/g, ' ').trim() });
+    pages.push({ page: 1, text: sanitizeForPostgres(collapseLetterSpacedOCR(data.text.replace(/\s+/g, ' ').trim())) });
   }
 
   return { pages, pageCount: data.numpages || pages.length };
@@ -126,7 +175,7 @@ function chunkPages(pages: PageText[]): TextChunk[] {
       .trim();
     if (content.length >= 40) {
       chunks.push({
-        content,
+        content: sanitizeForPostgres(content),
         page_start: slice[0]!.page,
         page_end: slice[slice.length - 1]!.page,
       });
