@@ -99,8 +99,9 @@ El script: lee PDFs → texto con nº de página → chunks ~1200 / overlap 250 
 Si `pdf-parse` no extrae texto (o casi nada) pero el PDF tiene páginas, el ingest activa **OCR fallback**:
 
 1. **Preferido (gratis/local):** `tesseract` + `pdftoppm` (paquetes `tesseract-ocr`, `tesseract-ocr-spa`, `poppler-utils`).
-2. **Alternativa de pago:** `OCR_MODE=openai` — rasteriza con `pdftoppm` y envía hasta `OCR_MAX_PAGES` (default 40) a **gpt-4o-mini** (visión).  
+2. **Alternativa de pago:** `OCR_MODE=openai` — envía hasta `OCR_MAX_PAGES` (default 40) a **gpt-4o-mini** (visión).  
    **⚠ Coste:** cada página es una llamada de visión; úsalo solo para los escaneados que fallaron (p. ej. con `--file`), no para todo el corpus.
+3. **Rasterize sin poppler:** si `pdftoppm` no está en el PATH (p. ej. Windows), el ingest usa `pdfjs-dist` + `@napi-rs/canvas` (deps de Node; no hace falta instalar poppler ni tesseract para `OCR_MODE=openai`).
 
 ```bash
 # Ejemplo: re-ingerir un KT escaneado con OCR OpenAI
@@ -148,12 +149,18 @@ npm run typecheck
 ```bash
 npx wrangler secret put SUPABASE_URL
 npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+npx wrangler secret put SUPABASE_ANON_KEY
 npx wrangler secret put OPENAI_API_KEY
+# recomendado (JWT Secret del dashboard):
+# npx wrangler secret put SUPABASE_JWT_SECRET
 # opcionales:
 # npx wrangler secret put OPENAI_BASE_URL
+# transición: BASIC_AUTH_USER / BASIC_AUTH_PASS (ver docs/AUTH.md)
 
 npm run deploy
 ```
+
+Auth de la UI: login email/password (Supabase) — ver `docs/AUTH.md`.
 
 Vars públicas de modelo ya están en `wrangler.toml` (`EMBEDDING_MODEL`, `CHAT_MODEL`).
 
@@ -186,7 +193,8 @@ Los hits keyword reciben similitud ~0.34–0.40 (piso 0.36) para superar `MIN_SI
 ## Fase 2 (notas)
 
 - Fotos / multimodal (más adelante).
-- Auth de usuarios reales + políticas RLS por `user_id`.
+- Auth email/password (Supabase) ya en UI + Bearer en Worker (`docs/AUTH.md`).
+- Políticas RLS por `auth.uid()` (hoy el Worker sigue con service_role).
 - Sync Drive (`drive_file_id` ya existe en `documents`).
 - Reindexado incremental.
 

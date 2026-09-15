@@ -35,6 +35,10 @@ export interface Env {
   ASSETS: Fetcher;
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
+  /** Anon/publishable key — JWT verify (getUser) + /api/config para el cliente */
+  SUPABASE_ANON_KEY?: string;
+  /** JWT secret del proyecto (Dashboard → Settings → API). Preferido para verificar Bearer. */
+  SUPABASE_JWT_SECRET?: string;
   OPENAI_API_KEY: string;
   OPENAI_BASE_URL?: string;
   EMBEDDING_MODEL: string;
@@ -43,9 +47,12 @@ export interface Env {
   TOP_K?: string;
   /** Umbral mínimo de similitud coseno (0–1). Por defecto 0.32 */
   MIN_SIMILARITY?: string;
-  /** Si ambos existen, protege UI+API con HTTP Basic */
+  /**
+   * Transición / emergencia: si ambos existen, el Worker aún acepta HTTP Basic
+   * (además de Bearer). La UI ya no usa Basic. Quitar secrets cuando Katya use solo login.
+   */
   BASIC_AUTH_USER?: string;
   BASIC_AUTH_PASS?: string;
-  /** Owner compartido del historial (default 'katya') hasta Supabase Auth */
+  /** Owner legado solo para Basic Auth (default 'katya'). Con Bearer se usa auth.uid. */
   CHAT_OWNER_ID?: string;
 }

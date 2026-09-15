@@ -11,8 +11,10 @@ not_found_handling = "single-page-application"
 run_worker_first = true
 
 # Secrets: wrangler secret put …  |  local: .dev.vars
-# Required: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY
+# Required: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY, OPENAI_API_KEY
+# Recommended: SUPABASE_JWT_SECRET (Bearer verify)
 # Optional: OPENAI_BASE_URL, EMBEDDING_DIM, TOP_K, MIN_SIMILARITY, CHAT_OWNER_ID
+# Transition: BASIC_AUTH_USER/PASS still accepted if set (UI uses Supabase login)
 
 [vars]
 EMBEDDING_MODEL = "text-embedding-3-small"

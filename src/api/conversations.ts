@@ -1,10 +1,11 @@
 /**
- * CRUD historial de chats (Supabase). Detrás del Basic Auth del Worker.
- * owner_id = env CHAT_OWNER_ID || 'katya' (compartido hasta Supabase Auth).
+ * CRUD historial de chats (Supabase).
+ * owner_id = auth user uuid (Bearer) o CHAT_OWNER_ID/'katya' (Basic legado).
  */
 import type { Context } from 'hono';
+import type { AppEnv } from '../lib/auth';
 import { createServiceClient } from '../lib/retrieve';
-import type { Citation, Env, FolderFilter } from '../lib/types';
+import type { Citation, FolderFilter } from '../lib/types';
 
 const VALID_FILTERS = new Set<FolderFilter>([
   'escuela',
@@ -13,12 +14,18 @@ const VALID_FILTERS = new Set<FolderFilter>([
   'all',
 ]);
 
-function ownerId(env: Env): string {
-  const v = (env.CHAT_OWNER_ID || '').trim();
+function ownerId(c: Context<AppEnv>): string {
+  try {
+    const id = c.get('ownerId');
+    if (typeof id === 'string' && id.trim()) return id.trim();
+  } catch {
+    /* Variables not set (should not happen behind requireAuth) */
+  }
+  const v = (c.env.CHAT_OWNER_ID || '').trim();
   return v || 'katya';
 }
 
-function requireDb(env: Env): string | null {
+function requireDb(env: { SUPABASE_URL?: string; SUPABASE_SERVICE_ROLE_KEY?: string }): string | null {
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
     return 'Faltan variables de entorno del servidor';
   }
@@ -32,7 +39,7 @@ function titleFromMessage(message: string): string {
 }
 
 /** GET /api/conversations */
-export async function listConversations(c: Context<{ Bindings: Env }>) {
+export async function listConversations(c: Context<AppEnv>) {
   const missing = requireDb(c.env);
   if (missing) return c.json({ error: missing }, 500);
 
@@ -40,7 +47,7 @@ export async function listConversations(c: Context<{ Bindings: Env }>) {
   const { data, error } = await supabase
     .from('conversations')
     .select('id, title, folder_filter, created_at, updated_at')
-    .eq('owner_id', ownerId(c.env))
+    .eq('owner_id', ownerId(c))
     .order('updated_at', { ascending: false })
     .limit(100);
 
@@ -52,7 +59,7 @@ export async function listConversations(c: Context<{ Bindings: Env }>) {
 }
 
 /** POST /api/conversations  { title?, folderFilter? } */
-export async function createConversation(c: Context<{ Bindings: Env }>) {
+export async function createConversation(c: Context<AppEnv>) {
   const missing = requireDb(c.env);
   if (missing) return c.json({ error: missing }, 500);
 
@@ -78,7 +85,7 @@ export async function createConversation(c: Context<{ Bindings: Env }>) {
   const { data, error } = await supabase
     .from('conversations')
     .insert({
-      owner_id: ownerId(c.env),
+      owner_id: ownerId(c),
       title,
       folder_filter: folderFilter,
       created_at: now,
@@ -95,7 +102,7 @@ export async function createConversation(c: Context<{ Bindings: Env }>) {
 }
 
 /** GET /api/conversations/:id */
-export async function getConversation(c: Context<{ Bindings: Env }>) {
+export async function getConversation(c: Context<AppEnv>) {
   const missing = requireDb(c.env);
   if (missing) return c.json({ error: missing }, 500);
 
@@ -103,7 +110,7 @@ export async function getConversation(c: Context<{ Bindings: Env }>) {
   if (!id) return c.json({ error: 'id obligatorio' }, 400);
 
   const supabase = createServiceClient(c.env);
-  const oid = ownerId(c.env);
+  const oid = ownerId(c);
 
   const { data: conv, error: convErr } = await supabase
     .from('conversations')
@@ -139,7 +146,7 @@ type AppendMessage = {
 };
 
 /** POST /api/conversations/:id/messages  { messages: AppendMessage[] } o un solo mensaje */
-export async function appendMessages(c: Context<{ Bindings: Env }>) {
+export async function appendMessages(c: Context<AppEnv>) {
   const missing = requireDb(c.env);
   if (missing) return c.json({ error: missing }, 500);
 
@@ -187,7 +194,7 @@ export async function appendMessages(c: Context<{ Bindings: Env }>) {
   }
 
   const supabase = createServiceClient(c.env);
-  const oid = ownerId(c.env);
+  const oid = ownerId(c);
 
   const { data: conv, error: convErr } = await supabase
     .from('conversations')
@@ -239,7 +246,7 @@ export async function appendMessages(c: Context<{ Bindings: Env }>) {
 }
 
 /** PATCH /api/conversations/:id  { title?, folderFilter? } */
-export async function patchConversation(c: Context<{ Bindings: Env }>) {
+export async function patchConversation(c: Context<AppEnv>) {
   const missing = requireDb(c.env);
   if (missing) return c.json({ error: missing }, 500);
 
@@ -271,7 +278,7 @@ export async function patchConversation(c: Context<{ Bindings: Env }>) {
     .from('conversations')
     .update(patch)
     .eq('id', id)
-    .eq('owner_id', ownerId(c.env))
+    .eq('owner_id', ownerId(c))
     .select('id, title, folder_filter, created_at, updated_at')
     .maybeSingle();
 
@@ -283,7 +290,7 @@ export async function patchConversation(c: Context<{ Bindings: Env }>) {
 }
 
 /** DELETE /api/conversations/:id */
-export async function deleteConversation(c: Context<{ Bindings: Env }>) {
+export async function deleteConversation(c: Context<AppEnv>) {
   const missing = requireDb(c.env);
   if (missing) return c.json({ error: missing }, 500);
 
@@ -295,7 +302,7 @@ export async function deleteConversation(c: Context<{ Bindings: Env }>) {
     .from('conversations')
     .delete()
     .eq('id', id)
-    .eq('owner_id', ownerId(c.env))
+    .eq('owner_id', ownerId(c))
     .select('id')
     .maybeSingle();
 

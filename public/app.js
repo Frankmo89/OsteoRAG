@@ -1,7 +1,18 @@
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.8/+esm';
+
 const STORAGE_KEY = 'osteorag-history-v1';
 const CONV_ID_KEY = 'osteorag-conversation-id-v1';
 const CONV_LIST_KEY = 'osteorag-conversations-v1';
 const MAX_MESSAGES = 40;
+
+const loginGate = document.getElementById('loginGate');
+const appMain = document.getElementById('appMain');
+const loginForm = document.getElementById('loginForm');
+const loginEmail = document.getElementById('loginEmail');
+const loginPassword = document.getElementById('loginPassword');
+const loginSubmit = document.getElementById('loginSubmit');
+const loginError = document.getElementById('loginError');
+const logoutBtn = document.getElementById('logoutBtn');
 
 const chat = document.getElementById('chat');
 const form = document.getElementById('form');
@@ -16,6 +27,11 @@ const toggleHistoryBtn = document.getElementById('toggleHistory');
 const historyPanel = document.getElementById('historyPanel');
 const historyList = document.getElementById('historyList');
 const historyStatus = document.getElementById('historyStatus');
+
+/** @type {import('@supabase/supabase-js').SupabaseClient | null} */
+let supabase = null;
+/** @type {string | null} */
+let accessToken = null;
 
 const SUGGESTIONS = {
   all: [
@@ -70,6 +86,7 @@ let conversationId = null;
 let conversations = [];
 let isLoading = false;
 let cloudAvailable = true;
+let appBooted = false;
 
 function escapeHtml(s) {
   return String(s)
@@ -337,14 +354,37 @@ function renderHistoryList() {
   }
 }
 
+async function refreshAccessToken() {
+  if (!supabase) return null;
+  const { data } = await supabase.auth.getSession();
+  accessToken = data.session?.access_token || null;
+  return accessToken;
+}
+
+function authHeaders(extra = {}) {
+  const h = { ...extra };
+  if (accessToken) {
+    h.Authorization = `Bearer ${accessToken}`;
+  }
+  return h;
+}
+
 async function apiJson(url, options = {}) {
+  if (!accessToken) await refreshAccessToken();
   const res = await fetch(url, {
     ...options,
-    headers: {
+    headers: authHeaders({
       'Content-Type': 'application/json',
       ...(options.headers || {}),
-    },
+    }),
   });
+  if (res.status === 401) {
+    // Sesión caducada → pantalla de login
+    accessToken = null;
+    showLogin('Sesión expirada. Vuelve a iniciar sesión.');
+    const data = await res.json().catch(() => ({ error: 'No autorizado' }));
+    return { res, data };
+  }
   const data = await res.json().catch(() => ({}));
   return { res, data };
 }
@@ -407,7 +447,6 @@ async function saveTurnToCloud(userText, botText, citations) {
       }),
     });
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    // Refresh list titles / updated_at
     await refreshConversations();
   } catch (err) {
     console.warn('No se pudo guardar el turno en la nube', err);
@@ -487,112 +526,158 @@ function toggleHistoryPanel() {
   }
 }
 
-folderChips.forEach((btn) => {
-  btn.addEventListener('click', () => setFolder(btn.dataset.folder));
-});
-
-folderFilter.addEventListener('change', () => setFolder(folderFilter.value));
-
-newChatBtn.addEventListener('click', () => clearChat(true));
-if (toggleHistoryBtn) {
-  toggleHistoryBtn.addEventListener('click', toggleHistoryPanel);
+function setLoginError(msg) {
+  if (!loginError) return;
+  if (msg) {
+    loginError.textContent = msg;
+    loginError.hidden = false;
+  } else {
+    loginError.textContent = '';
+    loginError.hidden = true;
+  }
 }
 
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const message = messageEl.value.trim();
-  if (!message || isLoading) return;
+function showLogin(msg) {
+  if (appMain) appMain.hidden = true;
+  if (loginGate) loginGate.hidden = false;
+  if (msg) setLoginError(msg);
+  if (loginEmail) loginEmail.focus();
+}
 
-  history.push({ role: 'user', text: message });
-  if (history.length > MAX_MESSAGES) history = history.slice(-MAX_MESSAGES);
-  saveLocalHistory();
-  appendMessageEl('user', message);
-  messageEl.value = '';
-  messageEl.style.height = 'auto';
-  isLoading = true;
-  updateSendState();
+function showApp() {
+  setLoginError('');
+  if (loginGate) loginGate.hidden = true;
+  if (appMain) appMain.hidden = false;
+}
 
-  const pending = appendMessageEl('bot', '', { loading: true });
+function wireUiOnce() {
+  if (appBooted) return;
+  appBooted = true;
 
-  try {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message,
-        folderFilter: folderFilter.value || 'all',
-      }),
+  folderChips.forEach((btn) => {
+    btn.addEventListener('click', () => setFolder(btn.dataset.folder));
+  });
+
+  folderFilter.addEventListener('change', () => setFolder(folderFilter.value));
+
+  newChatBtn.addEventListener('click', () => clearChat(true));
+  if (toggleHistoryBtn) {
+    toggleHistoryBtn.addEventListener('click', toggleHistoryPanel);
+  }
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', async () => {
+      try {
+        if (supabase) await supabase.auth.signOut();
+      } catch {
+        /* ignore */
+      }
+      accessToken = null;
+      showLogin('');
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const errText =
-        data.error || data.detail || `Error HTTP ${res.status}`;
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const message = messageEl.value.trim();
+    if (!message || isLoading) return;
+
+    history.push({ role: 'user', text: message });
+    if (history.length > MAX_MESSAGES) history = history.slice(-MAX_MESSAGES);
+    saveLocalHistory();
+    appendMessageEl('user', message);
+    messageEl.value = '';
+    messageEl.style.height = 'auto';
+    isLoading = true;
+    updateSendState();
+
+    const pending = appendMessageEl('bot', '', { loading: true });
+
+    try {
+      if (!accessToken) await refreshAccessToken();
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          message,
+          folderFilter: folderFilter.value || 'all',
+        }),
+      });
+      if (res.status === 401) {
+        accessToken = null;
+        showLogin('Sesión expirada. Vuelve a iniciar sesión.');
+        pending.remove();
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const errText =
+          data.error || data.detail || `Error HTTP ${res.status}`;
+        pending.classList.remove('loading');
+        pending.classList.add('error');
+        pending.textContent = errText;
+        history.push({ role: 'error', text: errText });
+        saveLocalHistory();
+        return;
+      }
+      const answer = data.answer || '(sin respuesta)';
+      pending.classList.remove('loading');
+      pending.innerHTML = '';
+      const body = document.createElement('div');
+      body.className = 'body';
+      body.innerHTML = renderMarkdown(answer);
+      pending.appendChild(body);
+      const chips = citationsBlock(data.citations);
+      if (chips) pending.appendChild(chips);
+      history.push({
+        role: 'bot',
+        text: answer,
+        citations: data.citations || [],
+      });
+      if (history.length > MAX_MESSAGES) history = history.slice(-MAX_MESSAGES);
+      saveLocalHistory();
+      saveTurnToCloud(message, answer, data.citations || []).catch(() => {});
+    } catch {
+      const errText = 'No se pudo contactar al servidor';
       pending.classList.remove('loading');
       pending.classList.add('error');
       pending.textContent = errText;
       history.push({ role: 'error', text: errText });
       saveLocalHistory();
-      return;
+    } finally {
+      isLoading = false;
+      updateSendState();
+      messageEl.focus();
+      chat.scrollTop = chat.scrollHeight;
     }
-    const answer = data.answer || '(sin respuesta)';
-    pending.classList.remove('loading');
-    pending.innerHTML = '';
-    const body = document.createElement('div');
-    body.className = 'body';
-    body.innerHTML = renderMarkdown(answer);
-    pending.appendChild(body);
-    const chips = citationsBlock(data.citations);
-    if (chips) pending.appendChild(chips);
-    history.push({
-      role: 'bot',
-      text: answer,
-      citations: data.citations || [],
-    });
-    if (history.length > MAX_MESSAGES) history = history.slice(-MAX_MESSAGES);
-    saveLocalHistory();
-    // Sync a la nube (no bloquea la UI si falla)
-    saveTurnToCloud(message, answer, data.citations || []).catch(() => {});
-  } catch {
-    const errText = 'No se pudo contactar al servidor';
-    pending.classList.remove('loading');
-    pending.classList.add('error');
-    pending.textContent = errText;
-    history.push({ role: 'error', text: errText });
-    saveLocalHistory();
-  } finally {
-    isLoading = false;
+  });
+
+  messageEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (!sendBtn.disabled) form.requestSubmit();
+    }
+  });
+
+  messageEl.addEventListener('input', () => {
+    messageEl.style.height = 'auto';
+    messageEl.style.height = `${Math.min(messageEl.scrollHeight, 120)}px`;
     updateSendState();
-    messageEl.focus();
-    chat.scrollTop = chat.scrollHeight;
-  }
-});
+  });
+}
 
-messageEl.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    if (!sendBtn.disabled) form.requestSubmit();
-  }
-});
-
-messageEl.addEventListener('input', () => {
-  messageEl.style.height = 'auto';
-  messageEl.style.height = `${Math.min(messageEl.scrollHeight, 120)}px`;
+async function bootAppAfterAuth() {
+  wireUiOnce();
+  history = loadLocalHistory();
+  conversationId = loadStoredConversationId();
+  conversations = loadCachedConversations();
+  setFolder(folderFilter.value || 'all');
+  renderAll();
+  renderHistoryList();
   updateSendState();
-});
+  showApp();
 
-// Boot: local first, then sync from cloud
-history = loadLocalHistory();
-conversationId = loadStoredConversationId();
-conversations = loadCachedConversations();
-setFolder(folderFilter.value || 'all');
-renderAll();
-renderHistoryList();
-updateSendState();
-
-(async () => {
   await refreshConversations();
   if (conversationId) {
-    // Prefer cloud thread if we have an id (cross-device)
     try {
       const { res, data } = await apiJson(`/api/conversations/${conversationId}`);
       if (res.ok && data.messages) {
@@ -616,4 +701,105 @@ updateSendState();
       /* keep local */
     }
   }
-})();
+  messageEl.focus();
+}
+
+async function initAuth() {
+  showLogin('');
+  setLoginError('Cargando…');
+
+  let cfg;
+  try {
+    const res = await fetch('/api/config');
+    cfg = await res.json().catch(() => ({}));
+    if (!res.ok || !cfg.supabaseUrl || !cfg.supabaseAnonKey) {
+      throw new Error(
+        cfg.error || 'Falta configuración de Supabase en el Worker',
+      );
+    }
+  } catch (err) {
+    setLoginError(
+      err instanceof Error
+        ? err.message
+        : 'No se pudo cargar /api/config',
+    );
+    return;
+  }
+
+  supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      storage: localStorage,
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
+    },
+  });
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (sessionData.session?.access_token) {
+    accessToken = sessionData.session.access_token;
+    setLoginError('');
+    await bootAppAfterAuth();
+  } else {
+    setLoginError('');
+    showLogin('');
+  }
+
+  supabase.auth.onAuthStateChange(async (event, session) => {
+    accessToken = session?.access_token || null;
+    if (event === 'SIGNED_OUT') {
+      showLogin('');
+    } else if (
+      (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') &&
+      accessToken &&
+      appMain?.hidden
+    ) {
+      await bootAppAfterAuth();
+    }
+  });
+
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!supabase) return;
+    const email = loginEmail.value.trim();
+    const password = loginPassword.value;
+    if (!email || !password) {
+      setLoginError('Correo y contraseña obligatorios');
+      return;
+    }
+    loginSubmit.disabled = true;
+    setLoginError('');
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) {
+        setLoginError(
+          error.message === 'Invalid login credentials'
+            ? 'Correo o contraseña incorrectos'
+            : error.message,
+        );
+        return;
+      }
+      accessToken = data.session?.access_token || null;
+      if (!accessToken) {
+        setLoginError('No se recibió sesión');
+        return;
+      }
+      loginPassword.value = '';
+      await bootAppAfterAuth();
+    } catch (err) {
+      setLoginError(
+        err instanceof Error ? err.message : 'Error al iniciar sesión',
+      );
+    } finally {
+      loginSubmit.disabled = false;
+    }
+  });
+}
+
+initAuth().catch((err) => {
+  console.error(err);
+  setLoginError('Error al iniciar la aplicación');
+});

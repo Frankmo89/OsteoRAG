@@ -5,10 +5,10 @@ import type { Context } from 'hono';
 import { generateAnswer } from '../lib/generate';
 import { filterByMinSimilarity, retrieveChunks } from '../lib/retrieve';
 import { NOT_FOUND_ANSWER } from '../prompts/system';
+import type { AppEnv } from '../lib/auth';
 import type {
   ChatRequestBody,
   ChatResponseBody,
-  Env,
   FolderFilter,
 } from '../lib/types';
 
@@ -43,7 +43,7 @@ function reformulationHints(folderFilter: FolderFilter): string {
   return `\n\nSugerencias para reformular:\n- ${tips.join('\n- ')}`;
 }
 
-export async function handleChat(c: Context<{ Bindings: Env }>) {
+export async function handleChat(c: Context<AppEnv>) {
   let body: ChatRequestBody;
   try {
     body = await c.req.json<ChatRequestBody>();

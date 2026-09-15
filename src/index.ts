@@ -1,8 +1,8 @@
 /**
  * OsteoRAG Worker — API Hono + assets estáticos.
+ * Auth: Supabase Bearer JWT (preferido) + Basic opcional de transición.
  */
 import { Hono } from 'hono';
-import { basicAuth } from 'hono/basic-auth';
 import { cors } from 'hono/cors';
 import { handleChat } from './api/chat';
 import {
@@ -13,32 +13,21 @@ import {
   listConversations,
   patchConversation,
 } from './api/conversations';
-import type { Env } from './lib/types';
+import { handleConfig, requireAuth, type AppEnv } from './lib/auth';
 
-const app = new Hono<{ Bindings: Env }>();
-
-/** Auth HTTP Basic si BASIC_AUTH_USER + BASIC_AUTH_PASS están definidos. */
-app.use('*', async (c, next) => {
-  const user = c.env.BASIC_AUTH_USER;
-  const pass = c.env.BASIC_AUTH_PASS;
-  if (!user || !pass) {
-    return next();
-  }
-  // Health / preflight sin auth
-  if (c.req.path === '/api/health' || c.req.method === 'OPTIONS') {
-    return next();
-  }
-  const auth = basicAuth({ username: user, password: pass });
-  return auth(c, next);
-});
+const app = new Hono<AppEnv>();
 
 app.use(
   '/api/*',
   cors({
     origin: '*',
     allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization'],
   }),
 );
+
+/** Config pública (URL + anon key) para el login SPA — sin auth. */
+app.get('/api/config', handleConfig);
 
 app.get('/api/health', (c) =>
   c.json({
@@ -47,6 +36,9 @@ app.get('/api/health', (c) =>
     note: 'Asistente de estudio — no diagnóstico',
   }),
 );
+
+/** Rutas API protegidas (Bearer o Basic de emergencia). */
+app.use('/api/*', requireAuth);
 
 app.post('/api/chat', handleChat);
 
@@ -58,6 +50,7 @@ app.patch('/api/conversations/:id', patchConversation);
 app.delete('/api/conversations/:id', deleteConversation);
 
 // Assets: SPA fallback vía wrangler [assets]; rutas API tienen prioridad.
+// La UI es pública; el login vive en el cliente (supabase-js).
 app.all('*', async (c) => {
   if (c.env.ASSETS) {
     return c.env.ASSETS.fetch(c.req.raw);

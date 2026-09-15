@@ -12,7 +12,45 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <div class="app">
+  <!-- Pantalla de login (Supabase email/password) -->
+  <div id="loginGate" class="login-gate" aria-live="polite">
+    <div class="login-card">
+      <div class="login-brand">
+        <span class="logo" aria-hidden="true">🦴</span>
+        <h1>OsteoRAG</h1>
+        <p class="tag">Asistente de estudio · inicia sesión</p>
+      </div>
+      <form id="loginForm" class="login-form" autocomplete="on">
+        <label class="login-label" for="loginEmail">Correo</label>
+        <input
+          id="loginEmail"
+          name="email"
+          type="email"
+          inputmode="email"
+          autocomplete="username"
+          required
+          placeholder="tu@correo.com"
+        />
+        <label class="login-label" for="loginPassword">Contraseña</label>
+        <input
+          id="loginPassword"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+          required
+          minlength="6"
+          placeholder="••••••••"
+        />
+        <p id="loginError" class="login-error" role="alert" hidden></p>
+        <button type="submit" id="loginSubmit" class="login-submit">
+          Entrar
+        </button>
+      </form>
+      <p class="login-foot">Material de estudio — no diagnóstico</p>
+    </div>
+  </div>
+
+  <div id="appMain" class="app" hidden>
     <header class="header">
       <div class="brand">
         <span class="logo" aria-hidden="true">🦴</span>
@@ -27,6 +65,9 @@
         </button>
         <button type="button" id="newChat" class="btn-ghost" aria-label="Nueva chat">
           Nueva chat
+        </button>
+        <button type="button" id="logoutBtn" class="btn-ghost btn-logout" aria-label="Cerrar sesión">
+          Salir
         </button>
       </div>
     </header>
