@@ -4,6 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="description" content="OsteoRAG — asistente de estudio para osteopatía. No diagnóstico." />
+  <meta name="theme-color" content="#0f1419" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <title>OsteoRAG</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -17,15 +21,9 @@
           <p class="tag">Asistente de estudio / clínica · no diagnóstico</p>
         </div>
       </div>
-      <label class="filter">
-        <span>Carpeta</span>
-        <select id="folderFilter" aria-label="Filtro de carpeta">
-          <option value="all">Todas</option>
-          <option value="escuela">Escuela</option>
-          <option value="libros">Libros</option>
-          <option value="tesis">Tesis</option>
-        </select>
-      </label>
+      <button type="button" id="newChat" class="btn-ghost" aria-label="Nueva chat">
+        Nueva chat
+      </button>
     </header>
 
     <aside class="disclaimer" role="note">
@@ -33,6 +31,27 @@
       <em>No diagnostica, no prescribe tratamientos y no sustituye el criterio profesional.</em>
       Usa siempre las citas y el material original.
     </aside>
+
+    <section class="filters" aria-label="Filtro de carpeta">
+      <span class="filters-label">Carpeta</span>
+      <div class="folder-chips" role="group" aria-label="Seleccionar carpeta">
+        <button type="button" class="fchip active" data-folder="all" aria-pressed="true">Todas</button>
+        <button type="button" class="fchip" data-folder="escuela" aria-pressed="false">Escuela</button>
+        <button type="button" class="fchip" data-folder="libros" aria-pressed="false">Libros/KT</button>
+        <button type="button" class="fchip" data-folder="tesis" aria-pressed="false">Tesis</button>
+      </div>
+      <label class="sr-only" for="folderFilter">Filtro de carpeta</label>
+      <select id="folderFilter" class="folder-select-fallback" aria-hidden="true" tabindex="-1">
+        <option value="all">Todas</option>
+        <option value="escuela">Escuela</option>
+        <option value="libros">Libros/KT</option>
+        <option value="tesis">Tesis</option>
+      </select>
+    </section>
+
+    <section class="suggestions" aria-label="Preguntas sugeridas">
+      <div id="suggestChips" class="suggest-chips"></div>
+    </section>
 
     <main id="chat" class="chat" aria-live="polite"></main>
 
@@ -43,6 +62,7 @@
         maxlength="4000"
         placeholder="Pregunta sobre anatomía, técnicas o apuntes…"
         required
+        enterkeyhint="send"
       ></textarea>
       <button type="submit" id="send" aria-label="Enviar">Enviar</button>
     </form>
