@@ -46,4 +46,6 @@ export interface Env {
   /** Si ambos existen, protege UI+API con HTTP Basic */
   BASIC_AUTH_USER?: string;
   BASIC_AUTH_PASS?: string;
+  /** Owner compartido del historial (default 'katya') hasta Supabase Auth */
+  CHAT_OWNER_ID?: string;
 }

@@ -12,7 +12,7 @@ run_worker_first = true
 
 # Secrets: wrangler secret put …  |  local: .dev.vars
 # Required: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY
-# Optional: OPENAI_BASE_URL, EMBEDDING_DIM, TOP_K, MIN_SIMILARITY
+# Optional: OPENAI_BASE_URL, EMBEDDING_DIM, TOP_K, MIN_SIMILARITY, CHAT_OWNER_ID
 
 [vars]
 EMBEDDING_MODEL = "text-embedding-3-small"

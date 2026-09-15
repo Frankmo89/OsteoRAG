@@ -1,4 +1,6 @@
 const STORAGE_KEY = 'osteorag-history-v1';
+const CONV_ID_KEY = 'osteorag-conversation-id-v1';
+const CONV_LIST_KEY = 'osteorag-conversations-v1';
 const MAX_MESSAGES = 40;
 
 const chat = document.getElementById('chat');
@@ -10,6 +12,10 @@ const folderChips = document.querySelectorAll('.fchip');
 const folderTip = document.getElementById('folderTip');
 const suggestChips = document.getElementById('suggestChips');
 const newChatBtn = document.getElementById('newChat');
+const toggleHistoryBtn = document.getElementById('toggleHistory');
+const historyPanel = document.getElementById('historyPanel');
+const historyList = document.getElementById('historyList');
+const historyStatus = document.getElementById('historyStatus');
 
 const SUGGESTIONS = {
   all: [
@@ -58,7 +64,12 @@ const WELCOME = WELCOME_BY_FOLDER.all;
 
 /** @type {{ role: string, text: string, citations?: any[] }[]} */
 let history = [];
+/** @type {string | null} */
+let conversationId = null;
+/** @type {{ id: string, title: string, folder_filter?: string, created_at?: string, updated_at?: string }[]} */
+let conversations = [];
 let isLoading = false;
+let cloudAvailable = true;
 
 function escapeHtml(s) {
   return String(s)
@@ -79,7 +90,7 @@ function updateSendState() {
   sendBtn.disabled = empty || isLoading;
 }
 
-function loadHistory() {
+function loadLocalHistory() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
@@ -90,7 +101,7 @@ function loadHistory() {
   }
 }
 
-function saveHistory() {
+function saveLocalHistory() {
   try {
     localStorage.setItem(
       STORAGE_KEY,
@@ -98,6 +109,63 @@ function saveHistory() {
     );
   } catch {
     /* quota / private mode */
+  }
+}
+
+function loadStoredConversationId() {
+  try {
+    return localStorage.getItem(CONV_ID_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+function persistConversationId(id) {
+  conversationId = id;
+  try {
+    if (id) localStorage.setItem(CONV_ID_KEY, id);
+    else localStorage.removeItem(CONV_ID_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function loadCachedConversations() {
+  try {
+    const raw = localStorage.getItem(CONV_LIST_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function cacheConversations(list) {
+  conversations = list;
+  try {
+    localStorage.setItem(CONV_LIST_KEY, JSON.stringify(list.slice(0, 100)));
+  } catch {
+    /* ignore */
+  }
+}
+
+function setHistoryStatus(text) {
+  if (historyStatus) historyStatus.textContent = text || '';
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString('es', {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return '';
   }
 }
 
@@ -212,14 +280,211 @@ function renderSuggestions() {
   }
 }
 
-function clearChat() {
+function renderHistoryList() {
+  if (!historyList) return;
+  historyList.innerHTML = '';
+  if (!conversations.length) {
+    const empty = document.createElement('p');
+    empty.className = 'history-empty';
+    empty.textContent = cloudAvailable
+      ? 'Aún no hay chats en la nube. Envía un mensaje para guardar.'
+      : 'Sin conexión a la nube — usando caché local.';
+    historyList.appendChild(empty);
+    return;
+  }
+  for (const c of conversations) {
+    const wrap = document.createElement('div');
+    wrap.style.display = 'flex';
+    wrap.style.alignItems = 'center';
+    wrap.style.gap = '4px';
+    wrap.style.width = '100%';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className =
+      'history-item' + (c.id === conversationId ? ' active' : '');
+    btn.style.flex = '1';
+    btn.setAttribute('role', 'listitem');
+
+    const mainWrap = document.createElement('div');
+    mainWrap.className = 'history-item-main';
+    const titleEl = document.createElement('span');
+    titleEl.className = 'history-item-title';
+    titleEl.textContent = c.title || 'Nueva chat';
+    const metaEl = document.createElement('span');
+    metaEl.className = 'history-item-meta';
+    const folder =
+      c.folder_filter && c.folder_filter !== 'all' ? c.folder_filter : '';
+    metaEl.textContent = [formatDate(c.updated_at || c.created_at), folder]
+      .filter(Boolean)
+      .join(' · ');
+    mainWrap.append(titleEl, metaEl);
+    btn.appendChild(mainWrap);
+    btn.addEventListener('click', () => openConversation(c.id));
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'history-item-del';
+    del.setAttribute('aria-label', 'Eliminar chat');
+    del.textContent = '×';
+    del.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteConversation(c.id);
+    });
+
+    wrap.append(btn, del);
+    historyList.appendChild(wrap);
+  }
+}
+
+async function apiJson(url, options = {}) {
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+  });
+  const data = await res.json().catch(() => ({}));
+  return { res, data };
+}
+
+async function refreshConversations() {
+  try {
+    const { res, data } = await apiJson('/api/conversations');
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    cloudAvailable = true;
+    cacheConversations(data.conversations || []);
+    setHistoryStatus(`${conversations.length} chat(s)`);
+    renderHistoryList();
+  } catch {
+    cloudAvailable = false;
+    conversations = loadCachedConversations();
+    setHistoryStatus('Sin nube · caché local');
+    renderHistoryList();
+  }
+}
+
+async function ensureConversation(firstUserMessage) {
+  if (conversationId) return conversationId;
+  const title =
+    firstUserMessage.trim().slice(0, 60) || 'Nueva chat';
+  const folder = folderFilter.value || 'all';
+  try {
+    const { res, data } = await apiJson('/api/conversations', {
+      method: 'POST',
+      body: JSON.stringify({ title, folderFilter: folder }),
+    });
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    const id = data.conversation?.id;
+    if (!id) throw new Error('sin id');
+    persistConversationId(id);
+    cloudAvailable = true;
+    await refreshConversations();
+    return id;
+  } catch (err) {
+    cloudAvailable = false;
+    console.warn('No se pudo crear conversación en la nube', err);
+    return null;
+  }
+}
+
+async function saveTurnToCloud(userText, botText, citations) {
+  const id = await ensureConversation(userText);
+  if (!id) return;
+  try {
+    const { res, data } = await apiJson(`/api/conversations/${id}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [
+          { role: 'user', content: userText },
+          {
+            role: 'assistant',
+            content: botText,
+            citations: citations || [],
+          },
+        ],
+      }),
+    });
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    // Refresh list titles / updated_at
+    await refreshConversations();
+  } catch (err) {
+    console.warn('No se pudo guardar el turno en la nube', err);
+  }
+}
+
+async function openConversation(id) {
+  if (!id || isLoading) return;
+  try {
+    setHistoryStatus('Cargando…');
+    const { res, data } = await apiJson(`/api/conversations/${id}`);
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    persistConversationId(id);
+    const msgs = data.messages || [];
+    history = msgs.map((m) => {
+      if (m.role === 'user') return { role: 'user', text: m.content };
+      return {
+        role: 'bot',
+        text: m.content,
+        citations: m.citations || [],
+      };
+    });
+    saveLocalHistory();
+    const ff = data.conversation?.folder_filter;
+    if (ff) setFolder(ff);
+    else setFolder(folderFilter.value || 'all');
+    renderAll();
+    renderHistoryList();
+    setHistoryStatus(`${conversations.length} chat(s)`);
+    messageEl.focus();
+  } catch (err) {
+    setHistoryStatus('Error al abrir');
+    console.warn(err);
+  }
+}
+
+async function deleteConversation(id) {
+  if (!id) return;
+  if (!confirm('¿Eliminar este chat?')) return;
+  try {
+    const { res, data } = await apiJson(`/api/conversations/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    if (conversationId === id) {
+      clearChat(false);
+    }
+    await refreshConversations();
+  } catch (err) {
+    alert('No se pudo eliminar el chat');
+    console.warn(err);
+  }
+}
+
+function clearChat(refreshList = true) {
   history = [];
-  saveHistory();
+  saveLocalHistory();
+  persistConversationId(null);
   renderAll();
   setFolder(folderFilter.value || 'all');
   messageEl.value = '';
   updateSendState();
   messageEl.focus();
+  if (refreshList) renderHistoryList();
+}
+
+function toggleHistoryPanel() {
+  if (!historyPanel || !toggleHistoryBtn) return;
+  const open = historyPanel.hasAttribute('hidden');
+  if (open) {
+    historyPanel.removeAttribute('hidden');
+    toggleHistoryBtn.setAttribute('aria-expanded', 'true');
+    refreshConversations();
+  } else {
+    historyPanel.setAttribute('hidden', '');
+    toggleHistoryBtn.setAttribute('aria-expanded', 'false');
+  }
 }
 
 folderChips.forEach((btn) => {
@@ -228,7 +493,10 @@ folderChips.forEach((btn) => {
 
 folderFilter.addEventListener('change', () => setFolder(folderFilter.value));
 
-newChatBtn.addEventListener('click', clearChat);
+newChatBtn.addEventListener('click', () => clearChat(true));
+if (toggleHistoryBtn) {
+  toggleHistoryBtn.addEventListener('click', toggleHistoryPanel);
+}
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -237,7 +505,7 @@ form.addEventListener('submit', async (e) => {
 
   history.push({ role: 'user', text: message });
   if (history.length > MAX_MESSAGES) history = history.slice(-MAX_MESSAGES);
-  saveHistory();
+  saveLocalHistory();
   appendMessageEl('user', message);
   messageEl.value = '';
   messageEl.style.height = 'auto';
@@ -263,7 +531,7 @@ form.addEventListener('submit', async (e) => {
       pending.classList.add('error');
       pending.textContent = errText;
       history.push({ role: 'error', text: errText });
-      saveHistory();
+      saveLocalHistory();
       return;
     }
     const answer = data.answer || '(sin respuesta)';
@@ -281,14 +549,16 @@ form.addEventListener('submit', async (e) => {
       citations: data.citations || [],
     });
     if (history.length > MAX_MESSAGES) history = history.slice(-MAX_MESSAGES);
-    saveHistory();
+    saveLocalHistory();
+    // Sync a la nube (no bloquea la UI si falla)
+    saveTurnToCloud(message, answer, data.citations || []).catch(() => {});
   } catch {
     const errText = 'No se pudo contactar al servidor';
     pending.classList.remove('loading');
     pending.classList.add('error');
     pending.textContent = errText;
     history.push({ role: 'error', text: errText });
-    saveHistory();
+    saveLocalHistory();
   } finally {
     isLoading = false;
     updateSendState();
@@ -310,7 +580,40 @@ messageEl.addEventListener('input', () => {
   updateSendState();
 });
 
-history = loadHistory();
+// Boot: local first, then sync from cloud
+history = loadLocalHistory();
+conversationId = loadStoredConversationId();
+conversations = loadCachedConversations();
 setFolder(folderFilter.value || 'all');
 renderAll();
+renderHistoryList();
 updateSendState();
+
+(async () => {
+  await refreshConversations();
+  if (conversationId) {
+    // Prefer cloud thread if we have an id (cross-device)
+    try {
+      const { res, data } = await apiJson(`/api/conversations/${conversationId}`);
+      if (res.ok && data.messages) {
+        history = (data.messages || []).map((m) => {
+          if (m.role === 'user') return { role: 'user', text: m.content };
+          return {
+            role: 'bot',
+            text: m.content,
+            citations: m.citations || [],
+          };
+        });
+        saveLocalHistory();
+        const ff = data.conversation?.folder_filter;
+        if (ff) setFolder(ff);
+        renderAll();
+        renderHistoryList();
+      } else if (res.status === 404) {
+        persistConversationId(null);
+      }
+    } catch {
+      /* keep local */
+    }
+  }
+})();

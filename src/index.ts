@@ -5,6 +5,14 @@ import { Hono } from 'hono';
 import { basicAuth } from 'hono/basic-auth';
 import { cors } from 'hono/cors';
 import { handleChat } from './api/chat';
+import {
+  appendMessages,
+  createConversation,
+  deleteConversation,
+  getConversation,
+  listConversations,
+  patchConversation,
+} from './api/conversations';
 import type { Env } from './lib/types';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -24,7 +32,13 @@ app.use('*', async (c, next) => {
   return auth(c, next);
 });
 
-app.use('/api/*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'OPTIONS'] }));
+app.use(
+  '/api/*',
+  cors({
+    origin: '*',
+    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  }),
+);
 
 app.get('/api/health', (c) =>
   c.json({
@@ -35,6 +49,13 @@ app.get('/api/health', (c) =>
 );
 
 app.post('/api/chat', handleChat);
+
+app.get('/api/conversations', listConversations);
+app.post('/api/conversations', createConversation);
+app.get('/api/conversations/:id', getConversation);
+app.post('/api/conversations/:id/messages', appendMessages);
+app.patch('/api/conversations/:id', patchConversation);
+app.delete('/api/conversations/:id', deleteConversation);
 
 // Assets: SPA fallback vía wrangler [assets]; rutas API tienen prioridad.
 app.all('*', async (c) => {

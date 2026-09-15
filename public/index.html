@@ -21,10 +21,23 @@
           <p class="tag">Asistente de estudio / clínica · no diagnóstico</p>
         </div>
       </div>
-      <button type="button" id="newChat" class="btn-ghost" aria-label="Nueva chat">
-        Nueva chat
-      </button>
+      <div class="header-actions">
+        <button type="button" id="toggleHistory" class="btn-ghost" aria-label="Historial de chats" aria-expanded="false" aria-controls="historyPanel">
+          Historial
+        </button>
+        <button type="button" id="newChat" class="btn-ghost" aria-label="Nueva chat">
+          Nueva chat
+        </button>
+      </div>
     </header>
+
+    <section id="historyPanel" class="history-panel" hidden aria-label="Chats guardados">
+      <div class="history-head">
+        <span class="history-label">Chats guardados</span>
+        <span id="historyStatus" class="history-status" aria-live="polite"></span>
+      </div>
+      <div id="historyList" class="history-list" role="list"></div>
+    </section>
 
     <aside class="disclaimer" role="note">
       <details>
