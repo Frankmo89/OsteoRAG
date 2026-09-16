@@ -1,203 +1,101 @@
-# OsteoRAG (MVP)
+# OsteoRAG
 
-Asistente **privado** de estudio/clínica para osteopatía basado en RAG (recuperación + generación).  
-**No diagnostica ni prescribe tratamientos.** Las respuestas deben citar el corpus.
+Private study / clinic assistant for osteopathy — **retrieval-augmented generation (RAG)** over a curated PDF corpus.  
+**Does not diagnose or prescribe.** Answers are required to cite the corpus.
 
-Stack: **Cloudflare Workers** (Hono + assets estáticos) · **Supabase** (Auth-ready, Postgres + **pgvector**) · **TypeScript** · API **OpenAI-compatible** (embeddings + chat).
+Stack: **Cloudflare Workers** (Hono + static assets) · **Supabase** (Auth, Postgres + **pgvector**) · **TypeScript** · OpenAI-compatible embeddings + chat.
 
-## Estructura
+> Portfolio note: the demo is auth-gated (not a public chat). This README documents the architecture and engineering decisions.
+
+---
+
+## Case study
+
+### Problem
+
+Osteopathy study materials live in large PDFs (school notes, textbooks, theses). Keyword search and scrolling are slow; a generic chatbot invents answers. The need was a **private**, citation-backed assistant that stays on the user’s sources.
+
+### Approach
+
+- **Ingest pipeline** (`scripts/ingest.ts`): PDF → page-aware text → chunk (~1200 / overlap 250) → embed → upsert into `documents` + `chunks`
+- **OCR fallback** for scanned PDFs (local Tesseract / poppler, or optional vision OCR)
+- **Hybrid retrieve**: query expansion → multi-query embedding match (`match_chunks`) + keyword RPC (`keyword_chunks`) with clinical token boosts
+- **Generate** with a system prompt that forces citations and refuses diagnosis/prescription framing
+- **Worker API** on Cloudflare (`POST /api/chat`) + mobile-friendly Spanish chat UI; Supabase Auth for access
+- Clear separation: **ingest** · **retrieve** · **generate**
+
+### Outcome
+
+Working MVP: hybrid RAG over a private corpus, Workers + Supabase stack, eval notes for quality scoring. Suitable as a fullstack + AI portfolio piece (auth-gated product, not a public toy).
+
+---
+
+## Architecture
 
 ```
 OsteoRAG/
-├── corpus/                 # PDFs por carpeta (no versionados)
+├── corpus/                 # PDFs by folder (not versioned)
 │   ├── escuela|libros|tesis/
-│   └── MANIFEST.md         # Prioridad de ingestión
-├── public/                 # UI chat móvil (ES)
+│   └── MANIFEST.md         # Ingest priority
+├── public/                 # Mobile chat UI
 ├── scripts/ingest.ts       # Extract → chunk → embed → upsert
 ├── src/
 │   ├── api/chat.ts         # POST /api/chat
-│   ├── lib/                # openai · expand · retrieve · generate · types
+│   ├── lib/                # openai · expand · retrieve · generate · auth
 │   ├── prompts/system.ts
-│   └── index.ts            # Worker Hono
-├── supabase/migrations/
-│   ├── 001_init.sql
-│   └── 002_keyword_search.sql   # hybrid keyword RPC
+│   └── index.ts            # Hono Worker
+├── supabase/migrations/    # pgvector + hybrid keyword RPCs + chat history
 ├── wrangler.toml
-├── .env.example
 └── package.json
 ```
 
-Límites claros: **ingest** (script) · **retrieve** (`src/lib/retrieve.ts`) · **generate** (`src/lib/generate.ts`).
+---
 
-## Requisitos
+## Stack
 
-- Node 20+
-- Cuenta [Supabase](https://supabase.com) y [Cloudflare](https://workers.cloudflare.com)
-- Clave de API OpenAI-compatible (embeddings + chat)
+| Layer | Choice |
+|---|---|
+| Edge | Cloudflare Workers + static assets (Hono) |
+| Data | Supabase Postgres + pgvector, Auth, RLS |
+| Embeddings / chat | OpenAI-compatible (`text-embedding-3-small`, `gpt-4o-mini`) |
+| Language | TypeScript |
+| Ingest | Node 20+, pdf-parse, optional OCR |
 
-## 1. Supabase
+---
 
-1. Crea un proyecto.
-2. SQL Editor → ejecuta en orden:
-   - `supabase/migrations/001_init.sql` (esquema + `match_chunks`)
-   - `supabase/migrations/002_keyword_search.sql` (FTS + `keyword_chunks` para hybrid retrieve)  
-   (o CLI: `supabase db push` si usas el CLI vinculado).
-3. Copia **Project URL**, **anon key** y **service_role key** (Settings → API).  
-   El **service_role** solo para el Worker y `npm run ingest` (nunca en el navegador).
-4. Auth queda listo para Fase 2; el MVP usa service role en servidor y RLS deny-all para `anon`/`authenticated`.
+## Setup (dev)
 
-### Dimensión de embeddings
-
-La migración define `embedding vector(1536)` (adecuado para `text-embedding-3-small`).  
-Si usas otro modelo/dimensión:
-
-1. Cambia `vector(1536)` y la firma de `match_chunks` en la migración (o nueva migración).
-2. Ajusta `EMBEDDING_DIM` / modelo en `.env` y `wrangler` vars.
-
-## 2. Variables de entorno
-
-```bash
-cp .env.example .env
-# Edita .env con tus claves
-
-# Para wrangler dev, también puedes usar .dev.vars (mismo formato KEY=value)
-```
-
-Variables clave:
-
-| Variable | Uso |
-|----------|-----|
-| `SUPABASE_URL` | API Supabase |
-| `SUPABASE_SERVICE_ROLE_KEY` | Ingest + Worker (bypassa RLS) |
-| `OPENAI_API_KEY` | Embeddings + chat |
-| `OPENAI_BASE_URL` | Opcional (proxy / compatible) |
-| `EMBEDDING_MODEL` | p.ej. `text-embedding-3-small` |
-| `CHAT_MODEL` | p.ej. `gpt-4o-mini` |
-| `OCR_MODE` | `auto` (default) · `tesseract` · `openai` · `off` |
-| `OCR_MAX_PAGES` | Máx. páginas OCR por PDF (default 40) |
-| `OCR_CHAT_MODEL` | Modelo visión OCR (default = `CHAT_MODEL`) |
-| `MIN_SIMILARITY` | Umbral coseno post-merge (default 0.32) |
-
-## 3. Corpus PDF
-
-1. Lee `corpus/MANIFEST.md` (prioridad).
-2. Copia PDFs a:
-   - `corpus/escuela/`
-   - `corpus/libros/` (p.ej. *ANATOMÍA FUNCIONAL PARA FISIOTERAPEUTAS.pdf*, Latarjet T1)
-   - `corpus/tesis/`
-3. Diferir KT grandes y PPTX enormes.
+1. Create a Supabase project and run migrations in order under `supabase/migrations/`.
+2. Copy `.env.example` → `.env` (and/or `.dev.vars` for Wrangler).  
+   Required: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`, `OPENAI_API_KEY`.  
+   Never put the service role key in the browser.
+3. Place PDFs under `corpus/` per `MANIFEST.md` (PDFs are gitignored).
+4. Install and run:
 
 ```bash
 npm install
 npm run ingest
+npm run dev      # wrangler dev
+npm run deploy   # wrangler deploy
 ```
 
-El script: lee PDFs → texto con nº de página → chunks ~1200 / overlap 250 → embeddings → upsert en `documents` + `chunks`.
+Embedding dimension defaults to `vector(1536)` for `text-embedding-3-small` — change the migration + env if you use another model.
 
-### OCR de PDFs escaneados
+---
 
-Si `pdf-parse` no extrae texto (o casi nada) pero el PDF tiene páginas, el ingest activa **OCR fallback**:
+## Privacy & safety
 
-1. **Preferido (gratis/local):** `tesseract` + `pdftoppm` (paquetes `tesseract-ocr`, `tesseract-ocr-spa`, `poppler-utils`).
-2. **Alternativa de pago:** `OCR_MODE=openai` — envía hasta `OCR_MAX_PAGES` (default 40) a **gpt-4o-mini** (visión).  
-   **⚠ Coste:** cada página es una llamada de visión; úsalo solo para los escaneados que fallaron (p. ej. con `--file`), no para todo el corpus.
-3. **Rasterize sin poppler:** si `pdftoppm` no está en el PATH (p. ej. Windows), el ingest usa `pdfjs-dist` + `@napi-rs/canvas` (deps de Node; no hace falta instalar poppler ni tesseract para `OCR_MODE=openai`).
+- Corpus PDFs and secrets are **not** in git (`.gitignore` + Wrangler secrets).
+- Product framing: study aid with citations — **not** a diagnostic or treatment tool.
+- Auth gate on the chat UI; RLS deny-all for anon on sensitive tables in the MVP design.
 
-```bash
-# Ejemplo: re-ingerir un KT escaneado con OCR OpenAI
-OCR_MODE=openai OCR_MAX_PAGES=40 npx tsx scripts/ingest.ts --file "corpus/libros/KT Adultos/k-taping en el drenaje linfatico.pdf"
-```
+---
 
-`--file` acepta paths Windows, acentos (NFC/NFD) y rutas relativas bajo `corpus/`.
+## Scripts
 
-### Re-ingerir un solo archivo
-
-Si un PDF no aparece en retrieve (p. ej. `Secuencia_TCS.pdf`), vuelve a indexarlo sin rehacer todo el corpus:
-
-```bash
-# Opción A — wrapper
-chmod +x scripts/reingest-one.sh
-./scripts/reingest-one.sh corpus/escuela/Secuencia_TCS.pdf
-
-# Opción B — flag / env
-npx tsx scripts/ingest.ts --file corpus/escuela/Secuencia_TCS.pdf
-INGEST_ONLY=escuela/Secuencia_TCS.pdf npm run ingest
-```
-
-Requiere `.env` con `SUPABASE_*` y `OPENAI_*`. Idempotente por `storage_path` (borra chunks previos del documento).
-
-## 4. Desarrollo local (Worker + UI)
-
-```bash
-npm install
-# .dev.vars con las mismas claves que .env (sin export)
-npx wrangler dev
-```
-
-Abre la URL local (p.ej. `http://127.0.0.1:8787`).  
-UI en español: disclaimer, filtro de carpeta, chips de citas.  
-API: `POST /api/chat` con `{ "message": "...", "folderFilter": "all"|"escuela"|"libros"|"tesis" }`.
-
-Comprobar tipos:
-
-```bash
-npm run typecheck
-```
-
-## 5. Deploy
-
-```bash
-npx wrangler secret put SUPABASE_URL
-npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-npx wrangler secret put SUPABASE_ANON_KEY
-npx wrangler secret put OPENAI_API_KEY
-# recomendado (JWT Secret del dashboard):
-# npx wrangler secret put SUPABASE_JWT_SECRET
-# opcionales:
-# npx wrangler secret put OPENAI_BASE_URL
-# transición: BASIC_AUTH_USER / BASIC_AUTH_PASS (ver docs/AUTH.md)
-
-npm run deploy
-```
-
-Auth de la UI: login email/password (Supabase) — ver `docs/AUTH.md`.
-
-Vars públicas de modelo ya están en `wrangler.toml` (`EMBEDDING_MODEL`, `CHAT_MODEL`).
-
-## API (resumen)
-
-**POST `/api/chat`**
-
-```json
-{ "message": "¿Inserciones del músculo psoas?", "folderFilter": "libros" }
-```
-
-Respuesta:
-
-```json
-{
-  "answer": "... texto en español con citas ...",
-  "citations": [
-    { "title": "...", "page": 42, "source_folder": "libros", "excerpt": "..." }
-  ]
-}
-```
-
-Sin hits útiles → mensaje de no encontrado en español (sin inventar).
-
-### Recuperación hybrid
-
-`src/lib/retrieve.ts` hace: expand query → multi-embed `match_chunks` → merge por id → **pase keyword** (`keyword_chunks` o `ilike` cliente) sobre tokens clínicos (≥4 chars) → top-K.  
-Los hits keyword reciben similitud ~0.34–0.40 (piso 0.36) para superar `MIN_SIMILARITY` sin ahogar resultados vectoriales. Requiere migración `002_keyword_search.sql`.
-
-## Fase 2 (notas)
-
-- Fotos / multimodal (más adelante).
-- Auth email/password (Supabase) ya en UI + Bearer en Worker (`docs/AUTH.md`).
-- Políticas RLS por `auth.uid()` (hoy el Worker sigue con service_role).
-- Sync Drive (`drive_file_id` ya existe en `documents`).
-- Reindexado incremental.
-
-## Licencia / privacidad
-
-Repositorio **privado**. No subir PDFs ni claves. Los binarios del corpus están en `.gitignore`.
+| Command | Purpose |
+|---|---|
+| `npm run ingest` | Full corpus ingest |
+| `npm run reingest-one` | Re-index a single file |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run deploy` | Deploy Worker |
