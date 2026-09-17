@@ -39,7 +39,7 @@ const SUGGESTIONS = {
     '¿Qué evidencia hay de kinesiotape en linfedema?',
     'Anatomía de los músculos del suelo pélvico',
     'Principios del abordaje craneosacral',
-    'Indicaciones del taping según Kumbrink',
+    'Indicaciones del K-Taping según Kumbrink',
   ],
   escuela: [
     'Técnicas para cervicales: contraindicaciones',

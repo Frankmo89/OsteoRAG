@@ -169,6 +169,10 @@ function diversifyAndBoost(
   const qJoined = stripAccents(queries.join(' ').toLowerCase());
   const wantsLinf =
     /linfedema|drenaje linf|k-taping.*linf|linfatico|linfático/.test(qJoined);
+  const wantsKumbrink =
+    /kumbrink|indicaciones? del taping|k-taping method|kinesiology taping teor/.test(
+      qJoined,
+    );
   const titlePrefer = [
     '06 cervicales',
     'cervicales',
@@ -177,6 +181,8 @@ function diversifyAndBoost(
     'k taping en el drenaje linfatico',
     'drenaje linfatico',
     'linfedema',
+    'kumbrink',
+    'kinesiology taping teoria',
   ];
 
   const scored = chunks.map((c) => {
@@ -200,6 +206,16 @@ function diversifyAndBoost(
     }
     if (wantsLinf && /k taping en el drenaje linfatico/.test(nt)) {
       score += 0.1;
+    }
+    // Preferencia fuerte a Kumbrink / teoría KT cuando la query lo pide
+    if (wantsKumbrink && /kumbrink/.test(nt)) {
+      score += 0.18;
+    }
+    if (wantsKumbrink && /kinesiology taping teor/.test(nt)) {
+      score += 0.1;
+    }
+    if (wantsKumbrink && /specific indications|indicaciones|application techniques/.test(hay)) {
+      score += 0.06;
     }
     return { c, score };
   });

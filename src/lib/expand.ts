@@ -104,6 +104,15 @@ const SYNONYM_GROUPS: string[][] = [
 /** Frases cortas útiles como consultas alternativas cuando hay match temático. */
 const TOPIC_QUERIES: Array<{ test: RegExp; queries: string[] }> = [
   {
+    test: /kumbrink|k-?taping\s*(seg[uú]n|method|m[eé]todo)|indicaciones?\s+del\s+taping/i,
+    queries: [
+      'kumbrink k-taping indicaciones Applications for Specific Indications',
+      'Kumbrink K-Taping Method muscle ligament corrective lymphatic',
+      'kumbrink+-+k-taping indicaciones del tape',
+      'Kinesiology taping teoria y practica indicaciones',
+    ],
+  },
+  {
     test: /kinesio|vendaje\s*neuro|\bvnm\b|tape|k-taping/i,
     queries: [
       'vendaje neuromuscular VNM kinesiotape definición',
@@ -306,6 +315,31 @@ function topicParaphrases(message: string, stripped: string): string[] {
  * Si el mensaje pide cervical + contraindic/precaución/Klein → forzar estas
  * parafrasis ANTES de las genéricas de TOPIC_QUERIES (cap 5).
  */
+
+/**
+ * Preguntas tipo "Indicaciones del taping según Kumbrink": el PDF se titula
+ * kumbrink+-+k-taping (inglés: Specific Indications). Forzar parafrasis
+ * antes de topics genéricos de kinesio/tape (cap 5).
+ */
+function kumbrinkTapingPriority(message: string): string[] {
+  const folded = stripAccents(message.toLowerCase());
+  const hasKumbrink = /kumbrink/.test(folded);
+  const hasTapingIndic =
+    /(taping|k-?taping|kinesio|vendaje)/.test(folded) &&
+    /(indicacion|aplicacion|technique|tecnica|cortes?)/.test(folded);
+  // Solo forzar cuando el autor o "indicaciones del taping" aparece
+  if (!hasKumbrink && !/indicaciones?\s+del\s+(taping|k-?taping)/.test(folded)) {
+    return [];
+  }
+  if (!hasKumbrink && !hasTapingIndic) return [];
+  return [
+    'kumbrink k-taping Applications for Specific Indications',
+    'kumbrink+-+k-taping K-Taping Method indicaciones',
+    'Birgit Kumbrink K-Taping muscle ligament corrective',
+    'Kinesiology taping teoria y practica Kumbrink',
+  ];
+}
+
 function cervicalContraindicPriority(message: string): string[] {
   const folded = stripAccents(message.toLowerCase());
   const hasCervical = /cervic|cuello|06_cervicales/.test(folded);
@@ -332,8 +366,11 @@ export function expandQueries(message: string): string[] {
     priority.push(stripped);
   }
 
-  // Forzado: cervical + contraindic / Klein (antes de topics genéricos)
-  const forced = cervicalContraindicPriority(original);
+  // Forzado: Kumbrink/taping indicaciones + cervical/Klein (antes de topics genéricos)
+  const forced = [
+    ...kumbrinkTapingPriority(original),
+    ...cervicalContraindicPriority(original),
+  ];
 
   // Alta prioridad: topics + sinónimos (resuelven WEAK/FAIL de EVAL_KATYA)
   const topical: string[] = [
