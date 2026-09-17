@@ -306,6 +306,20 @@ export async function retrieveChunks(
       const phraseHits = await keywordSearch(supabase, phrase, pTokens, filter);
       mergeKeywordHits(byId, phraseHits, pTokens.length ? pTokens : tokens);
     }
+    // Autor Kumbrink: FTS de la query ES completa se va a otros PDFs de
+    // "indicaciones"; forzar pase corto por autor/título del corpus.
+    const qFold = stripAccents(query.toLowerCase());
+    if (/kumbrink/.test(qFold) || /indicaciones?\s+del\s+(k-?)?taping/.test(qFold)) {
+      const authorQueries = [
+        'Kumbrink',
+        'kumbrink+-+k-taping',
+        'Birgit Kumbrink K-Taping',
+      ];
+      for (const aq of authorQueries) {
+        const aHits = await keywordSearch(supabase, aq, ['Kumbrink', 'kumbrink'], filter);
+        mergeKeywordHits(byId, aHits, ['Kumbrink', 'kumbrink', 'taping']);
+      }
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`keyword hybrid skip: ${msg}`);
